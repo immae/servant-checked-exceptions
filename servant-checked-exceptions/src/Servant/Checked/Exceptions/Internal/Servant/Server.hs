@@ -30,6 +30,7 @@ module Servant.Checked.Exceptions.Internal.Servant.Server where
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Functor.Identity
+import Data.Kind (Type)
 import Data.Maybe
 import Data.Proxy (Proxy(Proxy))
 import Data.WorldPeace (OpenUnion, Union(That, This))
@@ -43,6 +44,7 @@ import Servant.API.ContentTypes
   , canHandleAcceptH
   , handleAcceptH
   )
+import Servant.API.NamedRoutes (NamedRoutes)
 import Servant.Server.Internal (ct_wildcard)
 import Servant.Server.Internal.Router (Router, Router', leafRouter)
 import Servant.Server.Internal.RouteResult (RouteResult(FailFatal, Route))
@@ -157,6 +159,18 @@ instance HasServer ((Throwing es :> api1) :<|> (Throwing es :> api2)) context =>
     -> Delayed env (ServerT ((Throwing es :> api1) :<|> (Throwing es :> api2)) Handler)
     -> Router env
   route _ = route (Proxy :: Proxy ((Throwing es :> api1) :<|> (Throwing es :> api2)))
+
+-- | descend Throwing into NamedRoutes
+data AsEnveloppedServerT (es :: [Type]) (m :: Type -> Type)
+instance GenericMode (AsEnveloppedServerT es m) where
+  type AsEnveloppedServerT es m :- api = ServerT (Throwing es :> api) m
+type AsEnveloppedServer es = AsEnveloppedServerT es Handler
+
+instance HasServer (api (AsEnveloppedServerT es m)) context => HasServer (Throwing es :> NamedRoutes api) context where
+  type ServerT (Throwing es :> NamedRoutes api) m = api (AsEnveloppedServerT es m)
+  route _ ctx del = route (Proxy :: Proxy (api (AsEnveloppedServerT es m))) ctx (undefined del)
+  hoistServerWithContext _ = hoistServerWithContext (Proxy :: Proxy (Throwing es :> NamedRoutes api))
+
 
 -- | When 'NoThrow' comes before ':<|>', push 'NoThrow' into each
 -- branch of the API.
